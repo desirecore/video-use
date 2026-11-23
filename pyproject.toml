@@ -1,7 +1,7 @@
 [project]
 name = "video-use"
-version = "0.1.0"
-description = "Conversation-driven video editor skill for Claude Code"
+version = "0.1.1"
+description = "Conversation-driven video editor skill"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
@@ -21,3 +21,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 py-modules = []
+
+[tool.uv]
+# The skill runs its helpers directly and needs only the locked dependencies.
+package = false
