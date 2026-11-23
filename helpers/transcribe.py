@@ -7,10 +7,10 @@ to <edit_dir>/transcripts/<video_stem>.json.
 Cached: if the output file already exists, the upload is skipped.
 
 Usage:
-    python helpers/transcribe.py <video_path>
-    python helpers/transcribe.py <video_path> --edit-dir /custom/edit
-    python helpers/transcribe.py <video_path> --language en
-    python helpers/transcribe.py <video_path> --num-speakers 2
+    python helpers/transcribe.py <video_path> --upload-approved
+
+Pass --upload-approved only after the operator approves sending this video's
+selected audio track to ElevenLabs Scribe.
 """
 
 from __future__ import annotations
@@ -34,19 +34,10 @@ SCRIBE_URL = "https://api.elevenlabs.io/v1/speech-to-text"
 
 
 def load_api_key() -> str:
-    for candidate in [Path(__file__).resolve().parent.parent / ".env", Path(".env")]:
-        if candidate.exists():
-            for line in candidate.read_text().splitlines():
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, v = line.split("=", 1)
-                if k.strip() == "ELEVENLABS_API_KEY":
-                    return v.strip().strip('"').strip("'")
-    v = os.environ.get("ELEVENLABS_API_KEY", "")
-    if not v:
-        sys.exit("ELEVENLABS_API_KEY not found in .env or environment")
-    return v
+    key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+    if not key:
+        sys.exit("Set ELEVENLABS_API_KEY in the runtime environment before transcribing.")
+    return key
 
 
 def count_audio_tracks(video_path: Path) -> int:
@@ -88,7 +79,7 @@ def call_scribe(
     num_speakers: int | None = None,
 ) -> dict:
     data: dict[str, str] = {
-        "model_id": "scribe_v1",
+        "model_id": "scribe_v2",
         "diarize": "true",
         "tag_audio_events": "true",
         "timestamps_granularity": "word",
@@ -105,10 +96,11 @@ def call_scribe(
             files={"file": (audio_path.name, f, "audio/wav")},
             data=data,
             timeout=1800,
+            allow_redirects=False,
         )
 
     if resp.status_code != 200:
-        raise RuntimeError(f"Scribe returned {resp.status_code}: {resp.text[:500]}")
+        raise RuntimeError(f"Scribe returned HTTP {resp.status_code}")
 
     return resp.json()
 
@@ -128,24 +120,30 @@ def transcript_path(edit_dir: Path, video: Path, audio_track: int = 0) -> Path:
 def transcribe_one(
     video: Path,
     edit_dir: Path,
-    api_key: str,
+    api_key: str | None = None,
     language: str | None = None,
     num_speakers: int | None = None,
     verbose: bool = True,
     audio_track: int = 0,
+    *,
+    upload_approved: bool = False,
 ) -> Path:
     """Transcribe a single video. Returns path to transcript JSON.
 
     Cached: returns existing path immediately if the transcript already exists.
     """
-    transcripts_dir = edit_dir / "transcripts"
-    transcripts_dir.mkdir(parents=True, exist_ok=True)
     out_path = transcript_path(edit_dir, video, audio_track)
 
     if out_path.exists():
         if verbose:
             print(f"cached: {out_path.name}")
         return out_path
+
+    if not upload_approved:
+        raise ValueError("Confirm sending the selected audio to ElevenLabs before uploading.")
+    if api_key is None:
+        api_key = load_api_key()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     if verbose:
         print(f"  extracting audio from {video.name}", flush=True)
@@ -218,22 +216,27 @@ def main() -> None:
              "and the mic on track 1; without this ffmpeg applies its default audio "
              "stream selection, which picks the track with the most channels.",
     )
+    ap.add_argument(
+        "--upload-approved", action="store_true",
+        help="Operator approved uploading the selected audio track to ElevenLabs.",
+    )
     args = ap.parse_args()
 
     video = args.video.resolve()
-    if not video.exists():
+    if not video.is_file():
         sys.exit(f"video not found: {video}")
 
     edit_dir = (args.edit_dir or (video.parent / "edit")).resolve()
-    api_key = load_api_key()
+    if not args.upload_approved and not transcript_path(edit_dir, video, args.audio_track).exists():
+        ap.error("confirm sending this video's audio to ElevenLabs before passing --upload-approved")
 
     transcribe_one(
         video=video,
         edit_dir=edit_dir,
-        api_key=api_key,
         language=args.language,
         num_speakers=args.num_speakers,
         audio_track=args.audio_track,
+        upload_approved=args.upload_approved,
     )
 
 

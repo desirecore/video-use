@@ -1,6 +1,11 @@
 ---
 name: video-use
-description: Edit any video by conversation. Transcribe, cut, color grade, generate overlay animations, burn subtitles — for talking heads, montages, tutorials, travel, interviews. No presets, no menus. Ask questions, confirm the plan, execute, iterate, persist. Production-correctness rules are hard; everything else is artistic freedom.
+description: Edit videos conversationally with FFmpeg and word-level transcription. Uncached audio is sent to the separate ElevenLabs Scribe service only after the user approves the selected files and track. An operator-provided API key is required and separate fees may apply.
+version: 0.1.1
+license: MIT
+compatibility: Python 3.10+, uv, ffmpeg and ffprobe. Approved cloud transcription requires an ElevenLabs account, API key and network access to api.elevenlabs.io.
+requires:
+  bins: [uv, ffmpeg, ffprobe]
 ---
 
 # Video Use
@@ -26,11 +31,12 @@ These are the things where deviation produces silent failures or broken output. 
 5. **Master SRT uses output-timeline offsets**: `output_time = word.start - segment_start + segment_offset`. Otherwise captions misalign after segment concat.
 6. **Never cut inside a word.** Snap every cut edge to a word boundary from the Scribe transcript.
 7. **Pad every cut edge.** Working window: 30–200ms. Scribe timestamps drift 50–100ms — padding absorbs the drift. Tighter for fast-paced, looser for cinematic.
-8. **Word-level verbatim ASR only.** Never SRT/phrase mode (loses sub-second gap data). Never normalized fillers (loses editorial signal).
+8. **Use word-level ASR.** SRT or phrase-only timestamps cannot guide word-boundary cuts. Check the audio directly when the transcript may have omitted a filler or false start.
 9. **Cache transcripts per source.** Never re-transcribe unless the source file itself changed.
 10. **Parallel sub-agents for multiple animations.** Never sequential. Spawn N at once via the `Agent` tool; total wall time ≈ slowest one.
 11. **Strategy confirmation before execution.** Never touch the cut until the user has approved the plain-English plan.
-12. **All session outputs in `<videos_dir>/edit/`.** Never write inside the `video-use/` project directory.
+12. **All session outputs in `<videos_dir>/edit/`.** Keep the skill checkout free of project artifacts.
+13. **Ask before sending audio to ElevenLabs.** List the exact filenames, durations if available, selected audio track, destination and possible cost. Wait for explicit approval, allow exclusions, and ask again if the selected inputs or track change. Apply any host upload approval at the actual request. A request to edit or install the skill gives no permission to upload audio.
 
 Everything else in this document is a worked example. Deviate whenever the material calls for it.
 
@@ -57,22 +63,22 @@ The skill lives in `video-use/`. User footage lives wherever they put it. All se
 
 ## Setup
 
-First-time install lives in `install.md` (clone, deps, ffmpeg, skill registration, API key). Don't re-run it every session; on cold start just verify:
+Read [install.md](install.md) for prerequisites. The market installs the skill files. Run the helpers with the locked Python environment, using the directory containing this `SKILL.md` as `SKILL_DIR`.
 
-- `ELEVENLABS_API_KEY` resolves — either in the environment or in `.env` at the video-use repo root. If missing, ask the user to paste one and write it to `.env` (never to the user's `<videos_dir>`).
-- `ffmpeg` + `ffprobe` on PATH.
-- Python deps installed (`uv sync` or `pip install -e .` inside the repo).
-- Node.js + npm available if the session needs HyperFrames or Remotion slots. HyperFrames currently requires Node.js 22+.
-- `yt-dlp`, HyperFrames, Remotion, Manim installed only on first use.
-- First-use animation setup happens inside the slot directory, never at the video-use repo root. HyperFrames can be invoked with `npx --yes hyperframes ...`; Remotion can be scaffolded with `npx create-video@latest` or installed as a project-local dependency before using its `remotion render` command.
-- This skill vendors `skills/manim-video/`. Read its SKILL.md when building a Manim slot.
+```bash
+uv run --locked --project "$SKILL_DIR" python "$SKILL_DIR/helpers/transcribe_batch.py" "$VIDEOS_DIR"
+```
 
-Helpers (`helpers/transcribe.py`, `helpers/render.py`, etc.) live alongside this SKILL.md. Resolve their paths relative to the directory containing this file — the skill is typically symlinked at `~/.claude/skills/video-use/` or `~/.codex/skills/video-use/`.
+That command inventories uncached files locally. Once the user has approved the specific files and track, repeat the command with one `--file=NAME` per approved file and `--upload-approved`. Never infer authorization from the presence of a key or from an install. If the user declines, use compatible local transcript caches when available or tell them which transcript-based work is blocked.
+
+Read `ELEVENLABS_API_KEY` from the runtime environment. Ask the operator to configure it there out of band if it is missing. Keep the key out of chat, command arguments, logs and project files. ElevenLabs operates Scribe and bills separately under its [terms](https://elevenlabs.io/terms-of-use) and [privacy policy](https://elevenlabs.io/privacy-policy).
+
+Use locally configured animation engines for optional animation work. The bundled Manim guide is at `skills/manim-video/SKILL.md`. For online source acquisition, use an operator-configured `yt-dlp` only when the user requests it.
 
 ## Helpers
 
-- **`transcribe.py <video>`** — single-file Scribe call. `--num-speakers N` optional. Cached.
-- **`transcribe_batch.py <videos_dir>`** — 4-worker parallel transcription. Use for multi-take.
+- **`transcribe.py <video>`** — returns the cached transcript, or sends the selected audio track to Scribe with `--upload-approved`. `--num-speakers N` is optional.
+- **`transcribe_batch.py <videos_dir>`** — local inventory by default. Use `--file=NAME` for each file plus `--upload-approved` for approved batch transcription.
 - **`pack_transcripts.py --edit-dir <dir>`** — `transcripts/*.json` → `takes_packed.md` (phrase-level, break on silence ≥ 0.5s).
 - **`timeline_view.py <video> <start> <end>`** — filmstrip + waveform PNG. On-demand visual drill-down. **Not a scan tool** — use it at decision points, not constantly.
 - **`render.py <edl.json> -o <out>`** — per-segment extract → concat → overlays (PTS-shifted) → subtitles LAST. `--preview` for 720p fast. `--build-subtitles` to generate master.srt inline.
@@ -82,7 +88,7 @@ For animations, create `<edit>/animations/slot_<id>/` with `Bash` and spawn a su
 
 ## The process
 
-1. **Inventory.** `ffprobe` every source. `transcribe_batch.py` on the directory. `pack_transcripts.py` to produce `takes_packed.md`. Sample one or two `timeline_view`s for a visual first impression.
+1. **Inventory.** Run `transcribe_batch.py` locally to list uncached sources. Follow Rule 13 before any transfer, then run the approved selection and use `pack_transcripts.py` to produce `takes_packed.md`. Sample one or two `timeline_view`s for a visual first impression.
 2. **Pre-scan for problems.** One pass over `takes_packed.md` to note verbal slips, obvious mis-speaks, or phrasings to avoid. Plain list, feed into the editor brief.
 3. **Converse.** Describe what you see in plain English. Ask questions *shaped by the material*. Collect: content type, target length/aspect, aesthetic/brand direction, pacing feel, must-preserve moments, must-cut moments, animation and grade preferences, subtitle needs. Do not use a fixed checklist — the right questions are different every time.
 4. **Propose strategy.** 4–8 sentences: shape, take choices, cut direction, animation plan, grade direction, subtitle style, length estimate. **Wait for confirmation.**
@@ -211,9 +217,9 @@ Pick the engine per animation slot. Do not default to Remotion just because the 
 - **Manim** — formal diagrams, state machines, equation derivations, graph morphs. Read `skills/manim-video/SKILL.md` and its references for depth.
 - **PIL + PNG sequence + ffmpeg** — simple overlay cards: counters, typewriter text, single bar reveals, progressive draws. Fast to iterate, any aesthetic you want. The launch video used this.
 
-For HyperFrames slots, scaffold the slot inside `edit/animations/slot_<id>/` with `npx --yes hyperframes init . --example blank --non-interactive --skip-skills`, build the HTML composition there, run the HyperFrames checks that fit the slot (`lint`, `validate`, and a draft render when practical), then produce the final overlay video with `npx --yes hyperframes render . -o render.mp4` or `--format webm -o render.webm` when alpha is required. Point the EDL overlay `file` at the actual rendered path.
+For HyperFrames slots, use an operator-configured, version-pinned HyperFrames binary. Scaffold the slot inside `edit/animations/slot_<id>/` with `hyperframes init . --example blank --non-interactive --skip-skills`, build the HTML composition there, run the HyperFrames checks that fit the slot (`lint`, `validate`, and a draft render when practical), then produce the final overlay video with `hyperframes render . -o render.mp4` or `--format webm -o render.webm` when alpha is required. Point the EDL overlay `file` at the actual rendered path.
 
-For Remotion slots, keep the Remotion project isolated inside the same slot directory, scaffold with `npx create-video@latest` or install Remotion locally there, render the composition to `render.mp4` with the project-local `remotion render` command, and verify duration and dimensions with `ffprobe`.
+For Remotion slots, keep the Remotion project isolated inside the same slot directory, use a project-local version-pinned Remotion installation supplied by the operator, render the composition to `render.mp4` with the project-local `remotion render` command, and verify duration and dimensions with `ffprobe`.
 
 None is mandatory. Invent hybrids if useful (e.g., PIL background with a HyperFrames or Remotion layer on top).
 
@@ -328,7 +334,7 @@ Things that consistently fail regardless of style:
 - **Hierarchical pre-computed codec formats** with USABILITY / tone tags / shot layers. Over-engineering. Derive from the transcript at decision time.
 - **Hand-tuned moment-scoring functions.** The LLM picks better than any heuristic you'll write.
 - **Whisper SRT / phrase-level output.** Loses sub-second gap data. Always word-level verbatim.
-- **Running Whisper locally on CPU.** Slow and it normalizes fillers. Use hosted Scribe.
+- **Assuming transcripts preserve every filler.** Check the source audio for precise cuts. Scribe is available only for user-approved transfers.
 - **Burning subtitles into base before compositing overlays.** Overlays hide them. (Hard Rule 1.)
 - **Single-pass filtergraph when you have overlays.** Double re-encodes. Use per-segment extract → concat.
 - **Linear animation easing.** Looks robotic. Always cubic.
