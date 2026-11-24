@@ -16,7 +16,7 @@ This maintenance fork is published by DesireCore and derived from [Browser Use's
 
 ## Install and use
 
-In DesireCore, install **video-use** from the Skill Market. The market installs the skill and its dependency lockfile. You need Python 3.10+, `uv`, `ffmpeg` and `ffprobe` on the machine running the skill. See [install.md](install.md) for dependency setup and manual installation.
+In DesireCore, install **video-use** from the Skill Market. The market installs the skill and its dependency lockfile. You need Python 3.12, `uv`, `ffmpeg` and `ffprobe` on the machine running the skill. See [install.md](install.md) for dependency setup and manual installation.
 
 Transcription sends the selected source audio to ElevenLabs Scribe, a separately operated service that requires an API key and may charge for usage. Configure `ELEVENLABS_API_KEY` in the runtime environment. The skill asks which uncached files and audio track it may send before the first upload.
 
@@ -30,7 +30,7 @@ The LLM never watches the video. It **reads** it — through two layers that tog
   <img src="static/timeline-view.svg" alt="timeline_view composite — filmstrip + speaker track + waveform + word labels + silence-gap cut candidates" width="100%">
 </p>
 
-**Layer 1 — Audio transcript (always loaded).** One approved ElevenLabs Scribe call per uncached source gives word-level timestamps, speaker diarization, and audio events (`(laughter)`, `(applause)`, `(sigh)`). All takes pack into a single ~12KB `takes_packed.md` — the LLM's primary reading view.
+**Layer 1 — Audio transcript (always loaded).** Local large-v3 reads the original mix and separated sources, calibrates word boundaries, and clusters anonymous speakers across the recording. English phrase alternatives are checked with Parakeet and both waveforms. Scribe can be selected explicitly with upload approval to obtain its transcription and audio-event tags. All takes pack into a single ~12KB `takes_packed.md` — the LLM's primary reading view.
 
 ```
 ## C0103  (duration: 43.0s, 8 phrases)
@@ -48,7 +48,7 @@ Same idea as browser-use giving an LLM a structured DOM instead of a screenshot 
 ## Pipeline
 
 ```
-Approve upload ──> Transcribe ──> Pack ──> LLM Reasons ──> EDL ──> Render ──> Self-Eval
+Transcribe locally ──> Pack ──> LLM Reasons ──> EDL ──> Render ──> Self-Eval
                                                               │
                                                               └─ issue? fix + re-render (max 3)
 ```

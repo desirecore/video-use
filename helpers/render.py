@@ -436,7 +436,7 @@ CHUNK_MIN_S = 0.35      # a cue shorter than this reads as a flash
 CHUNK_PAUSE_S = 0.3     # a gap this long between words ends the cue
 
 
-def chunk_words(words: list[dict]) -> list[list[dict]]:
+def chunk_words(words: list[dict], *, separate_speakers: bool = False) -> list[list[dict]]:
     """Group transcript words into caption cues.
 
     A cue closes on trailing punctuation or on a pause before the next word.
@@ -457,6 +457,7 @@ def chunk_words(words: list[dict]) -> list[list[dict]]:
             nxt is None
             or text[-1] in PUNCT_BREAK
             or gap >= CHUNK_PAUSE_S
+            or (separate_speakers and nxt.get("speaker_id") != w.get("speaker_id"))
             or len(current) >= CHUNK_MAX_WORDS
             or (len(current) >= CHUNK_WORDS and dur >= CHUNK_MIN_S)
         ):
@@ -493,13 +494,13 @@ def build_master_srt(edl: dict, edit_dir: Path, out_path: Path) -> None:
         transcript = json.loads(tr_path.read_text())
         words_in_seg = _words_in_range(transcript, seg_start, seg_end)
 
-        for chunk in chunk_words(words_in_seg):
+        for chunk in chunk_words(words_in_seg, separate_speakers=bool(transcript.get("paths"))):
             local_start = max(seg_start, chunk[0].get("start", seg_start))
-            local_end = min(seg_end, chunk[-1].get("end", seg_end))
+            local_end = min(seg_end, max(word.get("end", seg_end) for word in chunk))
             out_start = max(0.0, local_start - seg_start) + seg_offset
             out_end = max(0.0, local_end - seg_start) + seg_offset
             if out_end <= out_start:
-                out_end = out_start + 0.4
+                continue
             text = " ".join((w.get("text") or "").strip() for w in chunk)
             text = re.sub(r"\s+", " ", text).strip()
             # Strip trailing punctuation for cleaner uppercase look

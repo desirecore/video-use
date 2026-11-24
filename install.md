@@ -1,31 +1,33 @@
 # Install video-use
 
-Install **video-use** in the DesireCore Skill Market to register the skill and its locked sources. The market installs the skill files. Run the helpers on a machine with Python 3.10 or newer, [uv](https://docs.astral.sh/uv/getting-started/installation/), and both `ffmpeg` and `ffprobe` on the runtime PATH.
+Install **video-use** with one click in the DesireCore Skill Market. On another skill host, register a published checkout that contains `SKILL.md`. Both install the skill and its Python lockfile.
 
-For another skill host, take a checkout of a published release and register the checkout directory containing `SKILL.md`.
+## Local transcription
 
-## Prepare the environment
-
-From the skill checkout, run:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and put `ffmpeg` and `ffprobe` on the runtime PATH. The command below uses Python 3.12 and sets up the locked CPU dependencies. It downloads pinned model files on first use and runs transcription on the machine with the media. No account or API key is required.
 
 ```sh
-uv sync --locked
+uv run --locked --python 3.12 --extra local --project "$SKILL_DIR" \
+  python "$SKILL_DIR/helpers/transcribe_batch.py" "$VIDEOS_DIR"
 ```
 
-This installs the dependencies recorded in `uv.lock` into the project's virtual environment. The first `uv run --locked` can do the same setup. When running from elsewhere, add `--project "$SKILL_DIR"`, where `SKILL_DIR` is the directory containing `SKILL.md`.
+`SKILL_DIR` is the directory containing `SKILL.md`. Repeat `--file=NAME` to limit a batch to specific sources. For an individual file, call `helpers/transcribe.py` with its path. `--audio-track` takes a zero-based stream index.
 
-For cloud transcription, set `ELEVENLABS_API_KEY` in the environment of the process running the skill. Configure it through the operator's secret manager or runtime environment settings, outside chat. A directory `.env` does not configure this version. Setup requires no API request.
+Allow about 4 GB for the English models and another 1.3 GB for Chinese alignment, plus space for the environment and temporary downloads. Network access to the public model hosts is needed to populate the cache. The model manifest records individual hashes and licenses. The model cache defaults to `$XDG_CACHE_HOME/video-use/models` or `~/.cache/video-use/models`. Set `VIDEO_USE_MODEL_DIR` to use an existing shared cache. Add `--offline` to require cached models. The first run can take significant CPU time, and local transcription uses a single batch worker by default.
 
-ElevenLabs Scribe is a separate service. You need an ElevenLabs account with speech-to-text access, network access to `api.elevenlabs.io`, and an API key. Usage may incur separate fees under the [service terms](https://elevenlabs.io/terms-of-use). Review the provider's [privacy policy](https://elevenlabs.io/privacy-policy) before sending audio.
+Local transcription runs large-v3 on the mix and up to three estimated sources per window. It fuses overlapping paths, assigns anonymous speakers by clustering voice embeddings across the recording, and aligns cuts for English and Chinese. English also uses Parakeet and large-v3 for same-speaker phrase candidates, with local acoustic checks on both the mix and corresponding stem. Weak or ambiguous phrase evidence keeps the original words. Other supported Whisper languages use Whisper's timing. Speaker labels are scoped to each recording. The local JSON supplies speech words and timestamps. Scribe audio-event tags remain available via the Scribe backend.
 
-## Review the upload
+## Explicitly select Scribe
 
-Use local inventory to see the uncached files and their durations:
+Scribe is optional. Configure `ELEVENLABS_API_KEY` through the runtime environment or a secret manager outside chat. You need an ElevenLabs account with speech-to-text access and network access to `api.elevenlabs.io`. Usage may incur fees under the [service terms](https://elevenlabs.io/terms-of-use). Audio sent to Scribe is subject to the provider's [privacy policy](https://elevenlabs.io/privacy-policy).
+
+Preview the pending list with `--backend scribe`:
 
 ```sh
-uv run --locked --project "$SKILL_DIR" python "$SKILL_DIR/helpers/transcribe_batch.py" "$VIDEOS_DIR"
+uv run --locked --project "$SKILL_DIR" python "$SKILL_DIR/helpers/transcribe_batch.py" \
+  "$VIDEOS_DIR" --backend scribe
 ```
 
-After the operator explicitly approves sending the selected files and track to ElevenLabs, add one `--file=NAME` per approved file and `--upload-approved`. By default, track 1 is selected. Use `--audio-track 1` to select the second track and include that selection in the request for approval. If the operator declines or a key is unavailable, use existing compatible cached transcripts or report that transcription is unavailable.
+After the user explicitly approves sending the specific files and selected audio track, add one `--file=NAME` per approved file and `--upload-approved`. For a single file, use `transcribe.py "$VIDEO" --backend scribe --upload-approved` with the same locked base environment. Selecting `--backend local` on a later run switches back to local. The selected backend supplies the active transcript for packing and rendering, and the compatible cache for each backend is retained.
 
-Optional tasks use separately configured tools. URL acquisition uses `yt-dlp`. Animation may use a version-pinned HyperFrames or Remotion install, or a local Manim install with the prerequisites described in its bundled guide.
+Optional tasks use separately configured tools. URL acquisition uses `yt-dlp`. Animation can use HyperFrames, Remotion, or Manim as described in their bundled guides.
