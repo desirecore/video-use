@@ -5,7 +5,7 @@ from collections import defaultdict
 import numpy as np
 import sherpa_onnx as sherpa
 
-from .fusion import midpoint, token
+from .fusion import midpoint
 
 
 RATE = 16000
@@ -177,102 +177,6 @@ def assign_words(
                 speaker_id=evidence.pop(), speaker_assignment="neighboring_context"
             )
     return output
-
-
-def protected_context(words, paths, acoustic):
-    by_id = {word["id"]: word for word in words}
-    strong = {
-        int(i)
-        for i, observations in acoustic.items()
-        if any(
-            value["fit"] >= 0.30 or value["agreement"] >= 0.80
-            for value in observations.values()
-        )
-    }
-    protected = set()
-    for path in paths.values():
-        for a, b, c in zip(path, path[1:], path[2:]):
-            first, middle, last = by_id[a], by_id[b], by_id[c]
-            speaker = middle.get("speaker_id")
-            if (
-                speaker
-                and first.get("speaker_id") == last.get("speaker_id") == speaker
-                and a in strong
-                and c in strong
-                and -0.08 <= middle["start"] - first["end"] <= 0.20
-                and -0.08 <= last["start"] - middle["end"] <= 0.20
-            ):
-                protected.add(b)
-    return protected
-
-
-def filter_words(words, paths, acoustic, protect_context=False):
-    rejected = {}
-    confidence = {}
-    protected = protected_context(words, paths, acoustic) if protect_context else set()
-    for word in words:
-        scores = list(acoustic.get(str(word["id"]), {}).values())
-        if not scores:
-            continue
-        top_fit = max(score["fit"] for score in scores)
-        top_agreement = max(score["agreement"] for score in scores)
-        confidence[word["id"]] = (len(word["sources"]), top_fit, top_agreement)
-        if (
-            len(word["sources"]) == 1
-            and top_fit < 0.16
-            and top_agreement < 0.65
-            and word["id"] not in protected
-        ):
-            rejected[word["id"]] = "weak_acoustic_support"
-
-    membership = defaultdict(set)
-    for name, path in paths.items():
-        for i in path:
-            membership[i].add(name)
-    groups = defaultdict(list)
-    for word in words:
-        speaker = word.get("speaker_id")
-        name = token(word["text"])
-        if speaker and name and word["id"] in confidence and word["id"] not in rejected:
-            groups[speaker, name].append(word)
-    for group in groups.values():
-        remaining = []
-        for word in sorted(
-            group, key=lambda item: confidence[item["id"]], reverse=True
-        ):
-            if any(
-                min(other["end"], word["end"]) - max(other["start"], word["start"])
-                >= 0.025
-                and abs(midpoint(other) - midpoint(word)) <= 0.15
-                and not membership[other["id"]] & membership[word["id"]]
-                for other in remaining
-            ):
-                rejected[word["id"]] = "duplicate_word_from_same_voice"
-            else:
-                remaining.append(word)
-
-    selected = [word for word in words if word["id"] not in rejected]
-    by_id = {word["id"]: word for word in selected}
-    selected_paths = {}
-    for source, path in paths.items():
-        groups = [[]]
-        removed = False
-        for i in path:
-            if i in rejected:
-                removed = True
-                continue
-            if (
-                removed
-                and groups[-1]
-                and by_id[i]["start"] - by_id[groups[-1][-1]]["end"] > 0.25
-            ):
-                groups.append([])
-            groups[-1].append(i)
-            removed = False
-        selected_paths.update(
-            {f"{source}:{i}": group for i, group in enumerate(groups) if group}
-        )
-    return selected, selected_paths, rejected
 
 
 STRONG_VOICE = {"exclusive_activity", "cross_track_voice"}

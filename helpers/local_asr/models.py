@@ -9,6 +9,8 @@ import tempfile
 from pathlib import Path
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 MANIFEST = json.loads(
@@ -44,11 +46,23 @@ def download(url, path):
     # Public model assets require no credentials, including after redirects.
     with requests.Session() as session:
         session.auth = lambda request: request
-        with session.get(url, stream=True, timeout=(20, 180)) as response:
-            response.raise_for_status()
-            with path.open("wb") as output:
-                for chunk in response.iter_content(1024 * 1024):
-                    output.write(chunk)
+        retries = Retry(
+            total=3, backoff_factor=1, status_forcelist=(429, 500, 502, 503, 504)
+        )
+        session.mount("https://", HTTPAdapter(max_retries=retries))
+        try:
+            with session.get(url, stream=True, timeout=(20, 180)) as response:
+                if response.status_code != 200:
+                    raise RuntimeError(
+                        f"Model download failed with HTTP {response.status_code}: {url}"
+                    )
+                with path.open("wb") as output:
+                    for chunk in response.iter_content(1024 * 1024):
+                        output.write(chunk)
+        except requests.RequestException as error:
+            raise RuntimeError(
+                f"Model download failed: {url} ({type(error).__name__})"
+            ) from None
 
 
 def model_dir(key, offline=False):
@@ -85,12 +99,10 @@ def model_dir(key, offline=False):
                         (staging / name).open("wb") as dest,
                     ):
                         shutil.copyfileobj(source, dest)
-        else:
-            for name, file in missing.items():
-                download(file.get("url") or spec["source"] + name, staging / name)
         for name, file in missing.items():
+            if "archive" not in spec:
+                download(file.get("url") or spec["source"] + name, staging / name)
             if not verified(staging / name, file):
                 raise RuntimeError(f"Model checksum mismatch: {key}/{name}")
-        for name in missing:
             (staging / name).replace(directory / name)
     return directory

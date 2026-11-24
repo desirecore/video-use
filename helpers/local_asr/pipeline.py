@@ -19,7 +19,6 @@ from .speakers import (
     acoustic_strength,
     assign_words,
     diarization_mask,
-    filter_words,
     fit_clusters,
     infer_label,
     load_models,
@@ -384,8 +383,6 @@ def transcribe(audio_path, language=None, num_speakers=None, offline=False):
             calibration = Calibration(
                 model_dir(f"alignment-{language}", offline), language
             )
-            if language == "en":
-                independent = parakeet_model(model_dir("parakeet", offline))
         streams = {"mix": mix_words}
         for source in signals:
             if source != "mix":
@@ -422,11 +419,10 @@ def transcribe(audio_path, language=None, num_speakers=None, offline=False):
                 for word in fused["words"]
             ]
         )
-        words, paths, _ = filter_words(
-            assigned, fused["paths"], evidence, protect_context=True
-        )
+        # Keep low-confidence words for the phrase verifier. Fusion already
+        # coalesces corroborated duplicate observations across source paths.
         document = voice_continuity(
-            {"words": words, "paths": paths, "speaker_turns": local_turns}
+            {"words": assigned, "paths": fused["paths"], "speaker_turns": local_turns}
         )
         window_id = len(chunks)
         for window in whole_clip_windows(embedder, signals, streams, local_activity):
@@ -437,6 +433,8 @@ def transcribe(audio_path, language=None, num_speakers=None, offline=False):
             (document, evidence, signals, begin / RATE, core / RATE, endcore / RATE)
         )
     del separator, diarizer, embedder
+    if language == "en" and chunks:
+        independent = parakeet_model(model_dir("parakeet", offline))
 
     clustered = fit_clusters(windows, prototypes) if prototypes and windows else {}
     completed = []

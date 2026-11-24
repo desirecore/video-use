@@ -26,7 +26,7 @@
     }
   },
   "sepformer": {
-    "source": "https://huggingface.co/speechbrain/sepformer-libri3mix/resolve/speechbrain/sepformer-libri3mix@1f2d824e2333aec9e60d0030fb144885c1afc426/",
+    "source": "https://huggingface.co/speechbrain/sepformer-libri3mix/resolve/1f2d824e2333aec9e60d0030fb144885c1afc426/",
     "license": "Apache-2.0",
     "files": {
       "decoder.ckpt": {
@@ -48,7 +48,7 @@
     }
   },
   "alignment-en": {
-    "source": "https://huggingface.co/facebook/wav2vec2-base-960h/resolve/facebook/wav2vec2-base-960h@22aad52d435eb6dbaf354bdad9b0da84ce7d6156/",
+    "source": "https://huggingface.co/facebook/wav2vec2-base-960h/resolve/22aad52d435eb6dbaf354bdad9b0da84ce7d6156/",
     "license": "Apache-2.0",
     "files": {
       "config.json": {
@@ -78,7 +78,7 @@
     }
   },
   "alignment-zh": {
-    "source": "https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-chinese-zh-cn/resolve/jonatasgrosman/wav2vec2-large-xlsr-53-chinese-zh-cn@99ccb2737be22b8bb50dcfcc39ad4d567fb90cfd/",
+    "source": "https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-chinese-zh-cn/resolve/99ccb2737be22b8bb50dcfcc39ad4d567fb90cfd/",
     "license": "Apache-2.0",
     "files": {
       "config.json": {
