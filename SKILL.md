@@ -1,9 +1,9 @@
 ---
 name: video-use
 description: Edit videos conversationally with FFmpeg and local word-level transcription. Uses large-v3 with overlap separation, anonymous speakers and English phrase verification. ElevenLabs Scribe is an explicit, separately approved option.
-version: 0.2.0
+version: 0.2.1
 license: MIT
-compatibility: Python 3.12, uv, ffmpeg and ffprobe. First local run downloads pinned model weights. Explicit Scribe use requires an ElevenLabs account, API key and network access to api.elevenlabs.io.
+compatibility: Python 3.12, uv, ffmpeg and ffprobe. Burned-in subtitles need FFmpeg with libass. First local run downloads pinned model weights. Explicit Scribe use requires an ElevenLabs account, API key and network access to api.elevenlabs.io.
 requires:
   bins: [uv, ffmpeg, ffprobe]
 ---

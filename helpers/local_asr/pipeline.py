@@ -160,7 +160,9 @@ class Calibration:
         letters = {i: char for char, i in self.vocab.items()}
         result = {str(word["id"]): {} for word in words}
         for word in words:
-            target = "".join(char for char in token(word["text"]) if char in self.vocab)
+            target = "".join(
+                char for char in (token(word["text"]) or "") if char in self.vocab
+            )
             if not target:
                 continue
             labels = [self.vocab[char] for char in target]
