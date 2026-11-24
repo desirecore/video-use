@@ -1,0 +1,160 @@
+{
+  "large-v3": {
+    "source": "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/",
+    "license": "MIT",
+    "files": {
+      "config.json": {
+        "sha256": "a9306624f5ec14270a014b647e5c316b6e03a662c369758d1b90697a7b0655b9",
+        "bytes": 2394
+      },
+      "model.bin": {
+        "sha256": "69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1",
+        "bytes": 3087284237
+      },
+      "preprocessor_config.json": {
+        "sha256": "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711",
+        "bytes": 340
+      },
+      "tokenizer.json": {
+        "sha256": "6d8cbd7cd0d8d5815e478dac67b85a26bbe77c1f5e0c6d76d1ce2abc0e5f21ca",
+        "bytes": 2480617
+      },
+      "vocabulary.json": {
+        "sha256": "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1",
+        "bytes": 1068114
+      }
+    }
+  },
+  "sepformer": {
+    "source": "https://huggingface.co/speechbrain/sepformer-libri3mix/resolve/1f2d824e2333aec9e60d0030fb144885c1afc426/",
+    "license": "Apache-2.0",
+    "files": {
+      "decoder.ckpt": {
+        "sha256": "9afdda4e4ecb9eefb5d49329193c7a9215ae7443aab206f2fe4eb0f50988ca53",
+        "bytes": 17272
+      },
+      "encoder.ckpt": {
+        "sha256": "e949e80c1a96965b723460209bb155eac1fdb2f6d2cf4e7b3e1d3152716f38d0",
+        "bytes": 17272
+      },
+      "hyperparams.yaml": {
+        "sha256": "4f0ae05600c66d7f8cf1269f54fd32dad576d4d473ad7169ef6ab26190658233",
+        "bytes": 1473
+      },
+      "masknet.ckpt": {
+        "sha256": "416af7b09d912c486261dd824788dd92d3b21373c8ec4d029209792522f4dbcb",
+        "bytes": 113375814
+      }
+    }
+  },
+  "alignment-en": {
+    "source": "https://huggingface.co/facebook/wav2vec2-base-960h/resolve/22aad52d435eb6dbaf354bdad9b0da84ce7d6156/",
+    "license": "Apache-2.0",
+    "files": {
+      "config.json": {
+        "sha256": "d3ec255c063d9f95057b553b19c20135b259875834a4fe9deb218a6be25b4cf3",
+        "bytes": 1596
+      },
+      "model.safetensors": {
+        "sha256": "8aa76ab2243c81747a1f832954586bc566090c83a0ac167df6f31f0fa917d74a",
+        "bytes": 377607901
+      },
+      "preprocessor_config.json": {
+        "sha256": "b225d617c025463b9e157e06afea8b90dc7078fc70b013c533328423e0486b4a",
+        "bytes": 159
+      },
+      "special_tokens_map.json": {
+        "sha256": "bb7068de1150661a10b55f9e4b12a0e77af8bf91f5e45e1b58afaf1d0e17f675",
+        "bytes": 85
+      },
+      "tokenizer_config.json": {
+        "sha256": "dc790594f5bc351a4311c6624f40acd95850d4aaf2a5cb3c656c9b610720b608",
+        "bytes": 163
+      },
+      "vocab.json": {
+        "sha256": "19727f8944fe6459fc3f240ae2c198395b740f6a029bd23e06656266b83bcf64",
+        "bytes": 291
+      }
+    }
+  },
+  "alignment-zh": {
+    "source": "https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-chinese-zh-cn/resolve/99ccb2737be22b8bb50dcfcc39ad4d567fb90cfd/",
+    "license": "Apache-2.0",
+    "files": {
+      "config.json": {
+        "sha256": "9af98614e322a5300c75605227d93c98af0c8f78754aba1dfc279166688afddd",
+        "bytes": 1567
+      },
+      "preprocessor_config.json": {
+        "sha256": "c403ce09975b90dff0dd8302c42d422e9de1f166cd7772df23490069893cb0cf",
+        "bytes": 158
+      },
+      "pytorch_model.bin": {
+        "sha256": "de031fd4b29e0c0667e5346450fadfe1326c89936b888b59c4ede608db763ee4",
+        "bytes": 1276296151
+      },
+      "special_tokens_map.json": {
+        "sha256": "bb7068de1150661a10b55f9e4b12a0e77af8bf91f5e45e1b58afaf1d0e17f675",
+        "bytes": 85
+      },
+      "vocab.json": {
+        "sha256": "33fea3444869c2cd2433f59da079b04ce91515f946d21fe1b0ff3825398bcec7",
+        "bytes": 44357
+      }
+    }
+  },
+  "segmentation": {
+    "archive": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2",
+    "sha256": "24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488",
+    "license": "MIT",
+    "files": {
+      "pyannote.onnx": {
+        "sha256": "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079",
+        "bytes": 5992913,
+        "member": "sherpa-onnx-pyannote-segmentation-3-0/model.onnx"
+      },
+      "LICENSE": {
+        "sha256": "14d7016ad68e7394d6e6b78d96cc2ae431c905287b89674cfdf021e79e62b8ba",
+        "bytes": 1061,
+        "member": "sherpa-onnx-pyannote-segmentation-3-0/LICENSE"
+      }
+    }
+  },
+  "embedding": {
+    "license": "Apache-2.0",
+    "files": {
+      "campplus-en.onnx": {
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx",
+        "sha256": "98daf9bcf1c8abf3db374fec4c27a5eda7c58705bb3f180d057b085a72a88bb5",
+        "bytes": 29596979
+      }
+    }
+  },
+  "parakeet": {
+    "archive": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2",
+    "sha256": "6fc4426b54aa549a0019b8a75b8dea59164e71790a37ac56a045ad57f915f714",
+    "license": "CC-BY-4.0",
+    "files": {
+      "decoder.int8.onnx": {
+        "sha256": "4d097bae3bac5c96018d5293ba39f1b657296102b142affda40378f38b020f41",
+        "bytes": 7257753,
+        "member": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/decoder.int8.onnx"
+      },
+      "encoder.int8.onnx": {
+        "sha256": "92a10bd9c23936ea0566c29f963bc57c2a5df4261b6a8921c39abea66557ca8b",
+        "bytes": 652282309,
+        "member": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/encoder.int8.onnx"
+      },
+      "joiner.int8.onnx": {
+        "sha256": "77a29f3e5ac7d37074e0af465391b80f314015d5b97f0f90c6c7767f1d56f428",
+        "bytes": 1739080,
+        "member": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/joiner.int8.onnx"
+      },
+      "tokens.txt": {
+        "sha256": "ec182b70dd42113aff6c5372c75cac58c952443eb22322f57bbd7f53977d497d",
+        "bytes": 9384,
+        "member": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/tokens.txt"
+      }
+    }
+  }
+}

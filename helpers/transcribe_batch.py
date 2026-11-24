@@ -1,9 +1,4 @@
-"""Inventory local videos, then transcribe an explicitly approved selection.
-
-Usage:
-    python helpers/transcribe_batch.py <videos_dir>
-    python helpers/transcribe_batch.py <videos_dir> --file clip.mp4 --upload-approved
-"""
+"""Transcribe a local media batch, or preview files for explicit Scribe approval."""
 
 from __future__ import annotations
 
@@ -15,7 +10,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from transcribe import load_api_key, transcribe_one, transcript_path
+from transcribe import (
+    add_backend_arguments, cache_options, cached_transcript, transcribe_one,
+    transcript_path, validate_backend_arguments,
+)
 
 
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".m4v"}
@@ -42,23 +40,21 @@ def describe_pending(videos: list[Path], audio_track: int) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Preview or transcribe selected video audio with ElevenLabs Scribe")
+    ap = argparse.ArgumentParser(description="Transcribe local videos or an explicitly approved Scribe selection")
     ap.add_argument("videos_dir", type=Path, help="Directory containing source videos")
     ap.add_argument(
         "--file", action="append", default=[], metavar="NAME",
         help="Exact filename in videos_dir. Repeat for every selected file.",
     )
-    ap.add_argument(
-        "--upload-approved", action="store_true",
-        help="Operator approved sending the selected files' audio to ElevenLabs.",
-    )
+    add_backend_arguments(ap)
     ap.add_argument(
         "--edit-dir",
         type=Path,
         default=None,
         help="Edit output directory (default: <videos_dir>/edit)",
     )
-    ap.add_argument("--workers", type=int, default=4, help="Parallel workers (default: 4)")
+    ap.add_argument("--workers", type=int, default=None,
+                    help="Parallel workers (default: 1 local, 4 Scribe)")
     ap.add_argument(
         "--language",
         type=str,
@@ -78,6 +74,10 @@ def main() -> None:
         help="Zero-based audio track to transcribe (OBS: 0 = game, 1 = mic).",
     )
     args = ap.parse_args()
+    validate_backend_arguments(ap, args)
+    workers = args.workers if args.workers is not None else (1 if args.backend == "local" else 4)
+    if workers < 1:
+        ap.error("--workers must be positive")
     if args.upload_approved and not args.file:
         ap.error("list the approved files with --file before uploading")
 
@@ -96,39 +96,50 @@ def main() -> None:
                 ap.error(f"not a supported video in the directory: {name!r}")
         videos = [by_name[name] for name in dict.fromkeys(args.file)]
 
-    already_cached = [v for v in videos
-                      if transcript_path(edit_dir, v, args.audio_track).exists()]
-    pending = [v for v in videos if v not in already_cached]
+    if len({transcript_path(edit_dir, video, args.audio_track) for video in videos}) != len(videos):
+        ap.error("selected files must have distinct names before their extensions")
 
-    print(f"selected {len(videos)} videos ({len(already_cached)} cached, {len(pending)} to transcribe)")
+    active, pending, needs_upload = [], [], []
+    for video in videos:
+        output = transcript_path(edit_dir, video, args.audio_track)
+        options = cache_options(video, args.backend, args.language, args.num_speakers)
+        cached = cached_transcript(output, options)
+        if cached == output:
+            active.append(video)
+        else:
+            pending.append(video)
+            if cached is None:
+                needs_upload.append(video)
+
+    print(f"selected {len(videos)} videos ({len(active)} active, {len(pending)} to process)")
     if not pending:
         print("nothing to do")
         return
 
-    if not args.upload_approved:
-        describe_pending(pending, args.audio_track)
-        return
+    if args.backend == "scribe" and not args.upload_approved:
+        if needs_upload:
+            describe_pending(needs_upload, args.audio_track)
+        pending = [video for video in pending if video not in needs_upload]
+        if not pending:
+            return
 
-    if len({transcript_path(edit_dir, video, args.audio_track) for video in videos}) != len(videos):
-        ap.error("selected files must have distinct names before their extensions")
-    api_key = load_api_key()
-
-    print(f"transcribing {len(pending)} files with {args.workers} parallel workers")
+    print(f"processing {len(pending)} files with {args.backend} ({workers} workers)")
     t0 = time.time()
 
     errors: list[tuple[Path, str]] = []
-    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
             pool.submit(
                 transcribe_one,
                 video=v,
                 edit_dir=edit_dir,
-                api_key=api_key,
                 language=args.language,
                 num_speakers=args.num_speakers,
                 verbose=False,
                 audio_track=args.audio_track,
-                upload_approved=True,
+                upload_approved=args.upload_approved,
+                backend=args.backend,
+                offline=args.offline,
             ): v
             for v in pending
         }
@@ -137,7 +148,7 @@ def main() -> None:
             try:
                 out = fut.result()
                 print(f"  + {v.stem}  →  {out.name}")
-            except Exception as e:
+            except (Exception, SystemExit) as e:
                 errors.append((v, str(e)))
                 print(f"  x {v.stem}  FAILED: {e}")
 

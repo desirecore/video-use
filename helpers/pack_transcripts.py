@@ -1,4 +1,4 @@
-"""Pack all Scribe transcripts in <edit>/transcripts/ into one readable markdown.
+"""Pack all transcripts in <edit>/transcripts/ into one readable markdown.
 
 Groups word-level entries into phrase-level lines, breaking on any silence
 >= 0.5s OR speaker change. Each phrase gets a [start-end] prefix. This is
@@ -38,6 +38,8 @@ def format_duration(seconds: float) -> str:
 def group_into_phrases(
     words: list[dict],
     silence_threshold: float = 0.5,
+    *,
+    keep_word_ids: bool = False,
 ) -> list[dict]:
     """Walk a Scribe word list, break into phrases on silence >= threshold
     OR speaker change. Returns list of {start, end, text, speaker_id}.
@@ -79,6 +81,8 @@ def group_into_phrases(
             "text": text,
             "speaker_id": current_speaker,
         })
+        if keep_word_ids:
+            phrases[-1]["word_ids"] = tuple(word["id"] for word in current_words)
         current_words = []
         current_start = None
         current_speaker = None
@@ -105,7 +109,8 @@ def group_into_phrases(
         speaker = w.get("speaker_id")
 
         # Flush on speaker change
-        if current_speaker is not None and speaker is not None and speaker != current_speaker:
+        if (speaker != current_speaker
+                and (keep_word_ids or (current_speaker is not None and speaker is not None))):
             flush()
 
         # Flush on a long gap from the previous kept token
@@ -122,13 +127,36 @@ def group_into_phrases(
     return phrases
 
 
+def overlapping_phrases(data: dict, silence_threshold: float) -> list[dict]:
+    """Keep coherent path phrases and omit duplicate views of the same words."""
+    words = {word["id"]: word for word in data["words"]}
+    unique = {}
+    for path in data["paths"].values():
+        for phrase in group_into_phrases([words[word_id] for word_id in path], silence_threshold,
+                                         keep_word_ids=True):
+            unique[phrase["word_ids"]] = phrase
+
+    retained = []
+    by_word = {}
+    for ids, phrase in sorted(unique.items(), key=lambda item: -len(item[0])):
+        # Keep a shorter route only if it adds context or independent speech.
+        if any(any(path[i:i + len(ids)] == ids for i in range(len(path) - len(ids) + 1))
+               for path in by_word.get(ids[0], [])):
+            continue
+        retained.append(phrase)
+        for word_id in ids:
+            by_word.setdefault(word_id, []).append(ids)
+    return sorted(retained, key=lambda phrase: (phrase["start"], phrase["end"]))
+
+
 def pack_one_file(json_path: Path, silence_threshold: float) -> tuple[str, float, list[dict]]:
     """Return (header_name, duration, phrases) for one transcript file."""
     data = json.loads(json_path.read_text())
     words = data.get("words", [])
-    phrases = group_into_phrases(words, silence_threshold)
+    phrases = (overlapping_phrases(data, silence_threshold) if data.get("paths")
+               else group_into_phrases(words, silence_threshold))
     if phrases:
-        duration = phrases[-1]["end"] - phrases[0]["start"]
+        duration = max(phrase["end"] for phrase in phrases) - phrases[0]["start"]
     else:
         duration = 0.0
     return json_path.stem, duration, phrases
@@ -152,7 +180,7 @@ def render_markdown(entries: list[tuple[str, float, list[dict]]], silence_thresh
             if spk is not None:
                 # Scribe returns IDs like "speaker_0" — strip the prefix for readability
                 spk_str = str(spk)
-                if spk_str.startswith("speaker_"):
+                if spk_str.startswith(("speaker_", "speaker-")):
                     spk_str = spk_str[len("speaker_"):]
                 spk_tag = f" S{spk_str}"
             else:
@@ -163,7 +191,7 @@ def render_markdown(entries: list[tuple[str, float, list[dict]]], silence_thresh
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Pack Scribe transcripts into takes_packed.md")
+    ap = argparse.ArgumentParser(description="Pack transcripts into takes_packed.md")
     ap.add_argument("--edit-dir", type=Path, required=True, help="Edit directory containing transcripts/")
     ap.add_argument(
         "--silence-threshold",

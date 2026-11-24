@@ -1,9 +1,9 @@
 ---
 name: video-use
-description: Edit videos conversationally with FFmpeg and word-level transcription. Uncached audio is sent to the separate ElevenLabs Scribe service only after the user approves the selected files and track. An operator-provided API key is required and separate fees may apply.
-version: 0.1.1
+description: Edit videos conversationally with FFmpeg and local word-level transcription. Uses large-v3 with overlap separation, anonymous speakers and English phrase verification. ElevenLabs Scribe is an explicit, separately approved option.
+version: 0.2.0
 license: MIT
-compatibility: Python 3.10+, uv, ffmpeg and ffprobe. Approved cloud transcription requires an ElevenLabs account, API key and network access to api.elevenlabs.io.
+compatibility: Python 3.12, uv, ffmpeg and ffprobe. First local run downloads pinned model weights. Explicit Scribe use requires an ElevenLabs account, API key and network access to api.elevenlabs.io.
 requires:
   bins: [uv, ffmpeg, ffprobe]
 ---
@@ -29,10 +29,10 @@ These are the things where deviation produces silent failures or broken output. 
 3. **30ms audio fades at every segment boundary** (`afade=t=in:st=0:d=0.03,afade=t=out:st={dur-0.03}:d=0.03`). Otherwise audible pops at every cut.
 4. **Overlays use `setpts=PTS-STARTPTS+T/TB`** to shift the overlay's frame 0 to its window start. Otherwise you see the middle of the animation during the overlay window.
 5. **Master SRT uses output-timeline offsets**: `output_time = word.start - segment_start + segment_offset`. Otherwise captions misalign after segment concat.
-6. **Never cut inside a word.** Snap every cut edge to a word boundary from the Scribe transcript.
-7. **Pad every cut edge.** Working window: 30–200ms. Scribe timestamps drift 50–100ms — padding absorbs the drift. Tighter for fast-paced, looser for cinematic.
+6. **Never cut inside a word.** Snap every cut edge to a word boundary from the active word-level transcript.
+7. **Pad every cut edge.** Working window: 30–200ms. Confirm ambiguous boundaries against the source audio and use padding to absorb small timestamp errors. Tighter for fast-paced, looser for cinematic.
 8. **Use word-level ASR.** SRT or phrase-only timestamps cannot guide word-boundary cuts. Check the audio directly when the transcript may have omitted a filler or false start.
-9. **Cache transcripts per source.** Never re-transcribe unless the source file itself changed.
+9. **Cache transcripts per source.** Reuse compatible output for the selected source, track and backend.
 10. **Parallel sub-agents for multiple animations.** Never sequential. Spawn N at once via the `Agent` tool; total wall time ≈ slowest one.
 11. **Strategy confirmation before execution.** Never touch the cut until the user has approved the plain-English plan.
 12. **All session outputs in `<videos_dir>/edit/`.** Keep the skill checkout free of project artifacts.
@@ -51,7 +51,7 @@ The skill lives in `video-use/`. User footage lives wherever they put it. All se
     ├── project.md               ← memory; appended every session
     ├── takes_packed.md          ← phrase-level transcripts, the LLM's primary reading view
     ├── edl.json                 ← cut decisions
-    ├── transcripts/<name>.json  ← cached raw Scribe JSON
+    ├── transcripts/<name>.json  ← active word-level JSON
     ├── animations/slot_<id>/    ← per-animation source + render + reasoning
     ├── clips_graded/            ← per-segment extracts with grade + fades
     ├── master.srt               ← output-timeline subtitles
@@ -66,10 +66,10 @@ The skill lives in `video-use/`. User footage lives wherever they put it. All se
 Read [install.md](install.md) for prerequisites. The market installs the skill files. Run the helpers with the locked Python environment, using the directory containing this `SKILL.md` as `SKILL_DIR`.
 
 ```bash
-uv run --locked --project "$SKILL_DIR" python "$SKILL_DIR/helpers/transcribe_batch.py" "$VIDEOS_DIR"
+uv run --locked --python 3.12 --extra local --project "$SKILL_DIR" python "$SKILL_DIR/helpers/transcribe_batch.py" "$VIDEOS_DIR"
 ```
 
-That command inventories uncached files locally. Once the user has approved the specific files and track, repeat the command with one `--file=NAME` per approved file and `--upload-approved`. Never infer authorization from the presence of a key or from an install. If the user declines, use compatible local transcript caches when available or tell them which transcript-based work is blocked.
+This runs the selected audio locally. The first run fetches the pinned model assets. Use `--file=NAME` to limit a batch and `--offline` with a prepared model cache. Use Scribe only when the user explicitly requests it. Preview with `--backend scribe` (the base locked environment is sufficient). After approval, include the exact `--file=NAME` selections and `--upload-approved`. Use `--backend local` to return to local processing. A local failure calls for reporting the error or repairing the local setup.
 
 Read `ELEVENLABS_API_KEY` from the runtime environment. Ask the operator to configure it there out of band if it is missing. Keep the key out of chat, command arguments, logs and project files. ElevenLabs operates Scribe and bills separately under its [terms](https://elevenlabs.io/terms-of-use) and [privacy policy](https://elevenlabs.io/privacy-policy).
 
@@ -77,8 +77,8 @@ Use locally configured animation engines for optional animation work. The bundle
 
 ## Helpers
 
-- **`transcribe.py <video>`** — returns the cached transcript, or sends the selected audio track to Scribe with `--upload-approved`. `--num-speakers N` is optional.
-- **`transcribe_batch.py <videos_dir>`** — local inventory by default. Use `--file=NAME` for each file plus `--upload-approved` for approved batch transcription.
+- **`transcribe.py <video>`** — uses the local backend by default. Use `--backend scribe --upload-approved` after approval to send the selected audio track to Scribe. `--num-speakers N` is optional.
+- **`transcribe_batch.py <videos_dir>`** — transcribes the local batch. With `--backend scribe`, use `--file=NAME` for each approved file plus `--upload-approved`.
 - **`pack_transcripts.py --edit-dir <dir>`** — `transcripts/*.json` → `takes_packed.md` (phrase-level, break on silence ≥ 0.5s).
 - **`timeline_view.py <video> <start> <end>`** — filmstrip + waveform PNG. On-demand visual drill-down. **Not a scan tool** — use it at decision points, not constantly.
 - **`render.py <edl.json> -o <out>`** — per-segment extract → concat → overlays (PTS-shifted) → subtitles LAST. `--preview` for 720p fast. `--build-subtitles` to generate master.srt inline.
@@ -88,7 +88,7 @@ For animations, create `<edit>/animations/slot_<id>/` with `Bash` and spawn a su
 
 ## The process
 
-1. **Inventory.** Run `transcribe_batch.py` locally to list uncached sources. Follow Rule 13 before any transfer, then run the approved selection and use `pack_transcripts.py` to produce `takes_packed.md`. Sample one or two `timeline_view`s for a visual first impression.
+1. **Transcribe.** Run `transcribe_batch.py` locally and use `pack_transcripts.py` to produce `takes_packed.md`. When the user explicitly selects Scribe, follow Rule 13 before any transfer. Sample one or two `timeline_view`s for a visual first impression.
 2. **Pre-scan for problems.** One pass over `takes_packed.md` to note verbal slips, obvious mis-speaks, or phrasings to avoid. Plain list, feed into the editor brief.
 3. **Converse.** Describe what you see in plain English. Ask questions *shaped by the material*. Collect: content type, target length/aspect, aesthetic/brand direction, pacing feel, must-preserve moments, must-cut moments, animation and grade preferences, subtitle needs. Do not use a fixed checklist — the right questions are different every time.
 4. **Propose strategy.** 4–8 sentences: shape, take choices, cut direction, animation plan, grade direction, subtitle style, length estimate. **Wait for confirmation.**
@@ -107,7 +107,7 @@ For animations, create `<edit>/animations/slot_<id>/` with `Bash` and spawn a su
    For anything the user will publish (launch, promo, ad), also spawn one **critic sub-agent** with the rendered file, the EDL, and any reference videos the user gave. Brief it to roast, not to praise: a verdict, ranked problems with timecodes and evidence (frames, levels), and the 5 fixes to do first. Fresh eyes catch what the author stopped seeing — cut-off payoff lines, 0.5s memes, unreadable 28px text at phone size.
 
    If anything fails: fix → re-render → re-eval. **Cap at 3 self-eval passes** — if issues remain after 3, flag them to the user rather than looping forever. Only present the preview once the self-eval passes.
-8. **Iterate + persist.** Natural-language feedback, re-plan, re-render. Never re-transcribe. Final render on confirmation. Append to `project.md`.
+8. **Iterate + persist.** Natural-language feedback, re-plan and re-render with the compatible cached transcript. Final render on confirmation. Append to `project.md`.
 
 ## Cut craft (techniques)
 
@@ -121,7 +121,7 @@ For animations, create `<edit>/animations/slot_<id>/` with `Bash` and spawn a su
 
 ## The packed transcript (primary reading view)
 
-`pack_transcripts.py` reads all `transcripts/*.json` and produces one markdown file where each take is a list of phrase-level lines, each prefixed with its `[start-end]` time range. Phrases break on any silence ≥ 0.5s OR speaker change. This is the artifact the editor sub-agent reads to pick cuts — it gives word-boundary precision from text alone at 1/10 the tokens of raw JSON.
+`pack_transcripts.py` reads all `transcripts/*.json` and produces one markdown file where each take is a list of phrase-level lines, each prefixed with its `[start-end]` time range. Phrases break on any silence ≥ 0.5s or speaker change. Local parallel paths can produce overlapping ranges for distinct utterances. This is the artifact the editor sub-agent reads to pick cuts — it gives word-boundary precision from text alone at 1/10 the tokens of raw JSON.
 
 Example line:
 ```
@@ -258,7 +258,7 @@ This is one style. If the brand is warm and serif, use that. If it's colorful an
 
 **Fonts fail silently.** A web font that didn't load renders in a fallback face with no error — the video ships in "almost Arial". In HyperFrames/Remotion, await the font load and then assert it: `if (!document.fonts.check('700 76px "Inter"')) throw new Error(...)`. In PIL, pass an explicit font path; never rely on the default.
 
-**Worked example — "show the edit" hook** (a launch video for this tool). Instead of a title card, the first 3s visualize the editing itself: each transcript word pops in on its Scribe timestamp, with bars under it drawn from the real audio envelope; a filler ("ummm") grows letter by letter while it is spoken, turns orange and is cut out on screen at the same frame the audio cuts, and the next line lands immediately. It works because the picture is *driven by the same data as the sound* — one composition (Remotion) reads frame-exact word/envelope JSON produced in Python, so nothing can drift. Use the idea whenever the story is "we removed something": make the removal visible.
+**Worked example — "show the edit" hook** (a launch video for this tool). Instead of a title card, the first 3s visualize the editing itself: each transcript word pops in on its transcript timestamp, with bars under it drawn from the real audio envelope; a filler ("ummm") grows letter by letter while it is spoken, turns orange and is cut out on screen at the same frame the audio cuts, and the next line lands immediately. It works because the picture is *driven by the same data as the sound* — one composition (Remotion) reads frame-exact word/envelope JSON produced in Python, so nothing can drift. Use the idea whenever the story is "we removed something": make the removal visible.
 
 **Parallel sub-agent brief** — each animation is one sub-agent spawned via the `Agent` tool. Each prompt is self-contained (sub-agents have no parent context). Include:
 
