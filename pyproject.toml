@@ -1,6 +1,6 @@
 [project]
 name = "video-use"
-version = "0.2.0"
+version = "0.2.1"
 description = "Conversation-driven video editor skill"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"

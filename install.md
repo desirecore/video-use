@@ -17,6 +17,10 @@ Allow about 4 GB for the English models and another 1.3 GB for Chinese alignment
 
 Local transcription runs large-v3 on the mix and up to three estimated sources per window. It fuses overlapping paths, assigns anonymous speakers by clustering voice embeddings across the recording, and aligns cuts for English and Chinese. English also uses Parakeet and large-v3 for same-speaker phrase candidates, with local acoustic checks on both the mix and corresponding stem. Weak or ambiguous phrase evidence keeps the original words. Other supported Whisper languages use Whisper's timing. Speaker labels are scoped to each recording. The local JSON supplies speech words and timestamps. Scribe audio-event tags remain available via the Scribe backend.
 
+## Render subtitles
+
+Burned-in subtitles require the FFmpeg `subtitles` filter backed by libass. Use `ffmpeg -filters` to check the build on the runtime PATH. On macOS, [Homebrew ffmpeg-full](https://formulae.brew.sh/formula/ffmpeg-full) includes this filter.
+
 ## Explicitly select Scribe
 
 Scribe is optional. Configure `ELEVENLABS_API_KEY` through the runtime environment or a secret manager outside chat. You need an ElevenLabs account with speech-to-text access and network access to `api.elevenlabs.io`. Usage may incur fees under the [service terms](https://elevenlabs.io/terms-of-use). Audio sent to Scribe is subject to the provider's [privacy policy](https://elevenlabs.io/privacy-policy).
